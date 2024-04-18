@@ -16,8 +16,6 @@ REGIONS = [
     "pacific",
 ]
 
-dirpath = "../data/"
-
 # --------------------------------------------------------------------------- #
 # Read Data                                                                   #
 # --------------------------------------------------------------------------- #
@@ -25,8 +23,8 @@ dirpath = "../data/"
 for region in REGIONS:
 
     # Read
-    df = pd.read_excel(os.path.join(dirpath, "carmen_sightings_20220629061307.xlsx"), sheet_name=region.upper())
+    df = pd.read_excel("../data/carmen_sightings_20220629061307.xlsx", sheet_name=region.upper())
     df["region"] = region
 
     # Write
-    df.to_csv(os.path.join(dirpath, f"carmen_sightings_{region}.csv"), index=False)
+    df.to_csv(f"../seeds/brz_carmen_sightings_{region}.csv", index=False)
