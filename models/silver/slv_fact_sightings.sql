@@ -1,6 +1,7 @@
 {{ config(materialized='table') }}
 
 select
+    id,
     date_witness as date,
     month_witness as month,
     witness,
