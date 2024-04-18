@@ -216,7 +216,7 @@ in two steps:
 * Create a view `gld_sightings_by_month_region` that counts the number of sightings per region per month
 * Create a view `gld_most_visited_regions` on top of that view that keeps only the row associated with the region with most occurrence for each month
 
-There are defined as:
+They are defined as:
 ```sql
 select
     month,
