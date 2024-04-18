@@ -1,3 +1,5 @@
+{{ config(materialized='table') }}
+
 WITH
  africa AS (SELECT * FROM {{ ref('slv_carmen_sightings_africa') }}),
  america AS (SELECT * FROM {{ ref('slv_carmen_sightings_america') }}),

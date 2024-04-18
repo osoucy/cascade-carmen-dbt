@@ -1,4 +1,6 @@
 
+{{ config(materialized='view') }}
+
 {% set renames = {
   'date_witness': 'date_witness',
   'witness': 'witness',
