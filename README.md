@@ -152,25 +152,165 @@ The relationships are summarized in this entity relationships diagram:
 ### Gold Tables
 Finally, 3 gold tables (and a view) were defined to the analytics questions.
 
-##### Behavior Aggregation
-The first gold table count the number of occurrence of each behavior. It is
-defined as
-```yaml
-  - name: gld_carmen_sightings_by_behavior
-    builder:
-      layer: GOLD
-      table_source:
-        name: slv_carmen_sightings
-        read_as_stream: false
-      aggregation:
-        groupby_columns:
-          - behavior
-        agg_expressions:
-          - name: count
-            spark_func_name: count
-            spark_func_args:
-              - region
+#### Behavior Aggregation
+The first gold table `gld_sightings_by_behavior` counts the number of occurrence
+of each behavior. It is defined as
+```sql
+ select
+    behavior,
+    count(id) as count
+from
+    {{ref("slv_carmen_sightings")}}
+group by
+    behavior
+order by
+    count desc
 ```
 
 and results in
-![gld-behaviour](./images/gld_behaviour.png)
+![gld-behaviour](./images/gld_behavior.png)
+
+#### Monthly aggregation
+The second table `gld_carmen_sightings_by_month` is the monthly aggregation defined as:
+
+```yaml
+SELECT
+    month,
+    count(id) as count,
+    sum(has_target_behavior::int)  as target_behavior_count,
+    sum(has_target_outfit::int)  as target_outfit_count,
+    sum(has_target_behavior::int)::float / count(id)  as target_behavior_probability,
+    sum(has_target_outfit::int)::float / count(id) as target_outfit_probability
+from (
+    select
+        *,
+        behavior IN ('out-of-control', 'complaining', 'happy') as has_target_behavior,
+        has_weapon AND has_jacket AND NOT has_hat AS has_target_outfit
+    from
+        {{ref("slv_fact_sightings")}}
+)
+group by
+    month
+order by
+    month desc
+```
+
+This one is a bit more involving as it:
+
+* Create a new column `has_target_behavior` that is `1` when the behavior is in the top 3 identified previously
+* Create a new column `has_target_outfit` that is `1` when the outfit (armed, hat, jacket) matches the description provided in the assessment
+* Group all rows of a month and 
+  * Count the total number of rows for each month
+  * Count the match for target behavior
+  * Count the match for target outfit
+* Calculate the probability of seeing target behavior `target_behavior_probability`
+* Calculate the probability of seeing target outfit `target_outfit_probability`
+
+And the final result is:
+![gld-month](./images/gld_month.png)
+
+
+#### Monthly and Regional Aggregation
+To identify the region most frequently visited by Carmen each month, we proceed
+in two steps:
+* Create a view `gld_sightings_by_month_region` that counts the number of sightings per region per month
+* Create a view `gld_most_visited_regions` on top of that view that keeps only the row associated with the region with most occurrence for each month
+
+There are defined as:
+```sql
+select
+    month,
+    region,
+    count(id)
+from (
+    select
+        *
+    from
+        {{ref("slv_fact_sightings")}} as f
+    join
+        {{ref("slv_dim_locations")}} as d
+    on f.location_id = d.location_id
+)
+group by
+    month, region
+order by
+    month desc, count desc
+```
+
+and
+
+```sql
+select
+    distinct on (month) month, region, count
+from
+    {{ref("gld_sightings_by_month_region")}}
+order by
+    month desc, count desc
+```
+
+And the result is:
+![gld-most-visited](./images/gld_most_visited.png)
+
+### Data Lineage
+As an added bonus, dbt builds a data lineage graphs that helps understand
+the relationship between the different tables.
+
+![gld-lineage](./images/lineage.png)
+
+
+# Analytics
+
+## a) In which region is Carmen most likely to be found each month?
+The answer is provided in column `region` of table `gld_most_visited_regions`. 
+Here are the 6 most recent results:
+
+| month   | region  |
+|---------|---------|
+| 2022-06 | america |
+| 2022-05 | asia    |
+| 2022-04 | america |
+| 2022-03 | europe  |
+| 2022-02 | america |
+| 2022-01 | america |
+
+
+## b) What is the monthly probability for Carmen to be armed and wearing a jacket, but not a hat?
+The answer is provided in column `target_outfit_probability` of table `gld_sightings_by_month`. 
+Here are the 6 most recent results:
+
+| month   | probability |
+|---------|-------------|
+| 2022-06 | 3.448%      |
+| 2022-05 | 3.226%      |
+| 2022-04 | 3.333%      |
+| 2022-03 | 6.452%      |
+| 2022-02 | 3.571%      |
+| 2022-01 | 0.000%      |
+
+Overall, the probability of Carmen to be armed, wearing a jacket, but no hat
+are very low with 3.91% on average. The only general observation that can be
+drawn from this is that this specific combination is very rare. Further 
+investigation would be required to identify if:
+* One of the contributing factor is low in itself (she could be armed on very rare occasions for example)
+* She tends to wear a hat when she is armed
+* We have a situation of survivorship bias where wearing a jacket means being able to better conceal the weapon and hiding it from the agent.
+
+## c) What are the most frequent behaviors of Carmen Sandiego?
+The answer is provided in column `count` of table `gld_carmen_sightings_by_behavior`. 
+Here are the 3 most frequent results:
+* out-of-control
+* complaining
+* happy
+
+## d) What is the monthly probability for Carmen to show one of the top 3 behavior? 
+The answer is provided in column `target_behavior_probability` of table `gld_carmen_sightings_by_month`. 
+Here are the 6 most recent results:
+
+| month   | probability |
+|---------|-------------|
+| 2022-06 | 24.14%      |
+| 2022-05 | 22.58%      |
+| 2022-04 | 20.00%      |
+| 2022-03 | 16.13%      |
+| 2022-02 | 10.71%      |
+| 2022-01 | 12.90%      |
